@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 import uiautomation as auto
 from lxml import etree
@@ -37,15 +35,38 @@ class UIElement:
         return self.__str__()
 
 class UITree:
-    def __init__(self, root_control: Optional[Any] = None, depth: Optional[int] = None):
+    def __init__(self, root_control: Optional['UIElement'] = None, depth: Optional[int] = None):
         """
-        root_control: uiautomation.Control オブジェクト。Noneならデスクトップ。
-        depth: 再帰的に探索する深さ。Noneなら無制限。
+        root_control: UIElement オブジェクト。Noneならデスクトップを自動取得。
+        depth: 再帰的に探索する深さ（未使用、互換性のため残す）。
         """
-        self.root_control = root_control or auto.GetRootControl()
+        if root_control is None:
+            desktop_control = auto.GetRootControl()
+            control_map = {}
+            tag = desktop_control.ControlTypeName or 'Control'
+            attrib = {
+                'name': desktop_control.Name or '',
+                'automation_id': desktop_control.AutomationId or '',
+                'class': desktop_control.ClassName or '',
+                'handle': str(desktop_control.NativeWindowHandle or ''),
+                'runtime_id': str(uuid.uuid4()),
+            }
+            # ValuePatternがあればattribに追加
+            try:
+                vp = desktop_control.GetValuePattern() if hasattr(desktop_control, 'GetValuePattern') else None
+                if vp is not None and hasattr(vp, 'Value'):
+                    attrib['value'] = vp.Value or ''
+            except Exception:
+                attrib['value'] = ''
+            elem = etree.Element(tag, attrib=attrib)
+            control_map[attrib['runtime_id']] = desktop_control
+            root_control = UIElement(elem, control_map)
+        if not isinstance(root_control, UIElement):
+            raise TypeError('root_control must be a UIElement')
+        self.root_control = root_control
         self.depth = float('inf') if depth is None else depth
-        self._control_map = {}  # runtime_id -> control
-        self.xml_root = self._build_xml_tree(self.root_control, self.depth)
+        self._control_map = root_control._control_map.copy()
+        self.xml_root = self._build_xml_tree(self.root_control.control, self.depth)
         self.tree = etree.ElementTree(self.xml_root)
 
     def _build_xml_tree(self, control: Any, depth: Union[int, float], parent_xml: Optional[etree._Element] = None) -> etree._Element:
@@ -59,6 +80,13 @@ class UITree:
             'handle': str(control.NativeWindowHandle or ''),
             'runtime_id': runtime_id,
         }
+        # ValuePatternがあればattribに追加
+        try:
+            vp = control.GetValuePattern() if hasattr(control, 'GetValuePattern') else None
+            if vp is not None and hasattr(vp, 'Value'):
+                attrib['value'] = vp.Value or ''
+        except Exception:
+            attrib['value'] = ''
         elem = etree.Element(tag, attrib=attrib)
         # Map runtime_id to control for reverse lookup
         self._control_map[runtime_id] = control
@@ -90,7 +118,7 @@ class UITree:
         else:
             self.depth = depth
         self._control_map.clear()
-        self.xml_root = self._build_xml_tree(self.root_control, self.depth)
+        self.xml_root = self._build_xml_tree(self.root_control.control, self.depth)
 
     def dumpxml(self, pretty_print: bool = True, encoding: str = 'unicode') -> str:
         """
