@@ -1,0 +1,3 @@
+uiautomation
+lxml
+setuptools
