@@ -80,9 +80,22 @@ class UITree:
         elements = self.tree.xpath(expr)
         return [UIElement(elem, self._control_map) for elem in elements]
 
-    def refresh(self) -> None:
+    def refresh(self, depth: Optional[int] = None) -> None:
         """
-        UIツリーを再構築する
+        UIツリーを再構築する。depthを指定した場合はその深さで再構築する。
+        depth=None なら無制限。
         """
+        if depth is None:
+            self.depth = float('inf')
+        else:
+            self.depth = depth
         self._control_map.clear()
         self.xml_root = self._build_xml_tree(self.root_control, self.depth)
+
+    def dumpxml(self, pretty_print: bool = True, encoding: str = 'unicode') -> str:
+        """
+        現在のUIツリーをXML文字列として返す。
+        pretty_print=True で整形出力。
+        encoding='unicode' でstr型、'utf-8' などでbytes型を返す。
+        """
+        return etree.tostring(self.xml_root, pretty_print=pretty_print, encoding=encoding)
